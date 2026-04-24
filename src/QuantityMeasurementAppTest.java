@@ -1,12 +1,12 @@
 import java.util.Objects;
 
 /**
- * UC6: Addition of Two Length Units (Same Category)
- * This implementation allows adding different units (Feet, Inches, Yards, CM)
- * and returns the result in the unit of the first operand.
+ * UC7: Addition with Target Unit Specification
+ * This API allows adding two length measurements and explicitly
+ * defining the unit in which the result should be returned.
  */
 
-// 1. Enum with Conversion Factors relative to FEET
+// 1. LengthUnit Enum (UC5 - UC7)
 enum LengthUnit {
     FEET(1.0),
     INCHES(1.0 / 12.0),
@@ -24,14 +24,14 @@ enum LengthUnit {
     }
 }
 
-// 2. QuantityLength Class (Immutable Value Object)
+// 2. Core QuantityLength Class
 class QuantityLength {
     private final double value;
     private final LengthUnit unit;
 
     public QuantityLength(double value, LengthUnit unit) {
         if (!Double.isFinite(value)) {
-            throw new IllegalArgumentException("Value must be a finite number");
+            throw new IllegalArgumentException("Value must be a finite number (not NaN/Infinity)");
         }
         this.value = value;
         this.unit = Objects.requireNonNull(unit, "Unit cannot be null");
@@ -41,24 +41,40 @@ class QuantityLength {
     public LengthUnit getUnit() { return unit; }
 
     /**
-     * UC6 Logic: Addition of two lengths.
-     * Converts both to a common base (Feet), sums them,
-     * and returns a new object in the first operand's unit.
+     * PRIVATE UTILITY METHOD (UC7 Concept)
+     * Centralizes addition logic to maintain the DRY principle.
+     * Converts inputs to base (FEET), sums them, and converts to target.
+     */
+    private static QuantityLength performAddition(QuantityLength l1, QuantityLength l2, LengthUnit target) {
+        Objects.requireNonNull(l1, "First operand cannot be null");
+        Objects.requireNonNull(l2, "Second operand cannot be null");
+        Objects.requireNonNull(target, "Target unit cannot be null");
+
+        // Normalize to base (FEET)
+        double baseVal1 = l1.value * l1.unit.getConversionFactor();
+        double baseVal2 = l2.value * l2.unit.getConversionFactor();
+
+        // Sum and convert to target unit
+        double sumInBase = baseVal1 + baseVal2;
+        double resultValue = sumInBase / target.getConversionFactor();
+
+        return new QuantityLength(resultValue, target);
+    }
+
+    /**
+     * UC6: Addition defaulting to the unit of the first operand.
+     * (Leverages the private utility method)
      */
     public QuantityLength add(QuantityLength other) {
-        if (other == null) throw new IllegalArgumentException("Operand cannot be null");
+        return performAddition(this, other, this.unit);
+    }
 
-        // Step 1: Convert both to common base (Feet)
-        double baseVal1 = this.value * this.unit.getConversionFactor();
-        double baseVal2 = other.value * other.unit.getConversionFactor();
-
-        // Step 2: Add values
-        double totalBase = baseVal1 + baseVal2;
-
-        // Step 3: Convert from base back to the unit of the first operand
-        double resultInTargetUnit = totalBase / this.unit.getConversionFactor();
-
-        return new QuantityLength(resultInTargetUnit, this.unit);
+    /**
+     * UC7: Overloaded Static Method for Explicit Target Unit Specification.
+     * Allows the caller to define the resulting unit.
+     */
+    public static QuantityLength add(QuantityLength l1, QuantityLength l2, LengthUnit targetUnit) {
+        return performAddition(l1, l2, targetUnit);
     }
 
     @Override
@@ -67,56 +83,66 @@ class QuantityLength {
         if (o == null || getClass() != o.getClass()) return false;
         QuantityLength that = (QuantityLength) o;
 
-        // Normalize both for equality comparison using epsilon tolerance
+        // Epsilon-based equality comparison at the base unit level
         double v1 = this.value * this.unit.getConversionFactor();
         double v2 = that.value * that.unit.getConversionFactor();
         return Math.abs(v1 - v2) < 1e-6;
     }
 
     @Override
+    public int hashCode() {
+        return Objects.hash(value * unit.getConversionFactor());
+    }
+
+    @Override
     public String toString() {
-        return String.format("Quantity(%.2f, %s)", value, unit);
+        return String.format("Quantity(%.3f, %s)", value, unit);
     }
 }
 
-// 3. Main Application for Standalone Testing
+// 3. Application Class for UC7 Testing/Demo
 public class QuantityMeasurementApp {
 
     public static void main(String[] args) {
-        System.out.println("=== UC6: Addition of Length Units Demo ===\n");
+        System.out.println("=== UC7: Addition with Target Unit Specification ===\n");
 
-        // 1. Same Unit Addition: 1ft + 2ft = 3ft
-        performAddition(new QuantityLength(1.0, LengthUnit.FEET),
-                new QuantityLength(2.0, LengthUnit.FEET));
+        QuantityLength oneFoot = new QuantityLength(1.0, LengthUnit.FEET);
+        QuantityLength twelveInches = new QuantityLength(12.0, LengthUnit.INCHES);
+        QuantityLength oneYard = new QuantityLength(1.0, LengthUnit.YARDS);
 
-        // 2. Cross-Unit Addition: 1ft + 12in = 2ft
-        performAddition(new QuantityLength(1.0, LengthUnit.FEET),
-                new QuantityLength(12.0, LengthUnit.INCHES));
+        // 1. Target: FEET (1ft + 12in = 2ft)
+        printResult(oneFoot, twelveInches, LengthUnit.FEET);
 
-        // 3. Reverse Cross-Unit: 12in + 1ft = 24in
-        performAddition(new QuantityLength(12.0, LengthUnit.INCHES),
-                new QuantityLength(1.0, LengthUnit.FEET));
+        // 2. Target: INCHES (1ft + 12in = 24in)
+        printResult(oneFoot, twelveInches, LengthUnit.INCHES);
 
-        // 4. Yards and Feet: 1yd + 3ft = 2yd
-        performAddition(new QuantityLength(1.0, LengthUnit.YARDS),
-                new QuantityLength(3.0, LengthUnit.FEET));
+        // 3. Target: YARDS (1ft + 12in = ~0.667 yards)
+        printResult(oneFoot, twelveInches, LengthUnit.YARDS);
 
-        // 5. CM and Inches: 2.54cm + 1in = 5.08cm
-        performAddition(new QuantityLength(2.54, LengthUnit.CENTIMETERS),
-                new QuantityLength(1.0, LengthUnit.INCHES));
+        // 4. Target: FEET (36in + 1yd = 6ft)
+        QuantityLength thirtySixInches = new QuantityLength(36.0, LengthUnit.INCHES);
+        printResult(thirtySixInches, oneYard, LengthUnit.FEET);
 
-        // 6. Identity (Zero): 5ft + 0in = 5ft
-        performAddition(new QuantityLength(5.0, LengthUnit.FEET),
-                new QuantityLength(0.0, LengthUnit.INCHES));
+        // 5. Target: CENTIMETERS (2.54cm + 1in = 5.08cm)
+        QuantityLength cmVal = new QuantityLength(2.54, LengthUnit.CENTIMETERS);
+        QuantityLength oneInch = new QuantityLength(1.0, LengthUnit.INCHES);
+        printResult(cmVal, oneInch, LengthUnit.CENTIMETERS);
 
-        // 7. Negative values: 5ft + (-2ft) = 3ft
-        performAddition(new QuantityLength(5.0, LengthUnit.FEET),
-                new QuantityLength(-2.0, LengthUnit.FEET));
+        // 6. Identity & Target Change (5ft + 0in = ~1.667 yards)
+        QuantityLength zeroInches = new QuantityLength(0.0, LengthUnit.INCHES);
+        printResult(new QuantityLength(5.0, LengthUnit.FEET), zeroInches, LengthUnit.YARDS);
+
+        // 7. Negative Values & Target: INCHES (5ft + -2ft = 36in)
+        QuantityLength negTwoFeet = new QuantityLength(-2.0, LengthUnit.FEET);
+        printResult(new QuantityLength(5.0, LengthUnit.FEET), negTwoFeet, LengthUnit.INCHES);
     }
 
-    private static void performAddition(QuantityLength l1, QuantityLength l2) {
-        QuantityLength sum = l1.add(l2);
-        System.out.printf("Input: %s + %s%n", l1, l2);
-        System.out.printf("Output: %s%n%n", sum);
+    /**
+     * Helper method to format output for the console.
+     */
+    private static void printResult(QuantityLength l1, QuantityLength l2, LengthUnit target) {
+        QuantityLength result = QuantityLength.add(l1, l2, target);
+        System.out.printf("Add: [%s] + [%s] -> Target: %s%n", l1, l2, target);
+        System.out.printf("Result: %s%n%n", result);
     }
 }
