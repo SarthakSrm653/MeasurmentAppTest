@@ -1,12 +1,13 @@
 import java.util.Objects;
 
 /**
- * UC7: Addition with Target Unit Specification
- * This API allows adding two length measurements and explicitly
- * defining the unit in which the result should be returned.
+ * UC8: Refactored Unit Conversion API
+ * 1. LengthUnit: Standalone Enum with Conversion Responsibility.
+ * 2. QuantityLength: Domain logic for Comparison and Arithmetic.
+ * 3. QuantityMeasurementApp: Client/Demo code.
  */
 
-// 1. LengthUnit Enum (UC5 - UC7)
+// --- 1. STANDALONE ENUM (Conversion Responsibility) ---
 enum LengthUnit {
     FEET(1.0),
     INCHES(1.0 / 12.0),
@@ -19,19 +20,33 @@ enum LengthUnit {
         this.conversionFactor = conversionFactor;
     }
 
+    /**
+     * Responsibility: Convert a value in THIS unit to the base unit (FEET).
+     */
+    public double convertToBaseUnit(double value) {
+        return value * this.conversionFactor;
+    }
+
+    /**
+     * Responsibility: Convert a value FROM the base unit (FEET) to THIS unit.
+     */
+    public double convertFromBaseUnit(double baseValue) {
+        return baseValue / this.conversionFactor;
+    }
+
     public double getConversionFactor() {
         return conversionFactor;
     }
 }
 
-// 2. Core QuantityLength Class
+// --- 2. REFACTORED QUANTITY CLASS (Delegation Pattern) ---
 class QuantityLength {
     private final double value;
     private final LengthUnit unit;
 
     public QuantityLength(double value, LengthUnit unit) {
         if (!Double.isFinite(value)) {
-            throw new IllegalArgumentException("Value must be a finite number (not NaN/Infinity)");
+            throw new IllegalArgumentException("Value must be a finite number");
         }
         this.value = value;
         this.unit = Objects.requireNonNull(unit, "Unit cannot be null");
@@ -41,40 +56,38 @@ class QuantityLength {
     public LengthUnit getUnit() { return unit; }
 
     /**
-     * PRIVATE UTILITY METHOD (UC7 Concept)
-     * Centralizes addition logic to maintain the DRY principle.
-     * Converts inputs to base (FEET), sums them, and converts to target.
+     * UC5 Refactored: Delegates conversion to the unit class.
      */
-    private static QuantityLength performAddition(QuantityLength l1, QuantityLength l2, LengthUnit target) {
-        Objects.requireNonNull(l1, "First operand cannot be null");
-        Objects.requireNonNull(l2, "Second operand cannot be null");
-        Objects.requireNonNull(target, "Target unit cannot be null");
-
-        // Normalize to base (FEET)
-        double baseVal1 = l1.value * l1.unit.getConversionFactor();
-        double baseVal2 = l2.value * l2.unit.getConversionFactor();
-
-        // Sum and convert to target unit
-        double sumInBase = baseVal1 + baseVal2;
-        double resultValue = sumInBase / target.getConversionFactor();
-
-        return new QuantityLength(resultValue, target);
+    public QuantityLength convertTo(LengthUnit targetUnit) {
+        Objects.requireNonNull(targetUnit);
+        double baseValue = this.unit.convertToBaseUnit(this.value);
+        double convertedValue = targetUnit.convertFromBaseUnit(baseValue);
+        return new QuantityLength(convertedValue, targetUnit);
     }
 
     /**
-     * UC6: Addition defaulting to the unit of the first operand.
-     * (Leverages the private utility method)
+     * UC7 Refactored: Addition with explicit target unit specification.
+     */
+    public QuantityLength add(QuantityLength other, LengthUnit targetUnit) {
+        Objects.requireNonNull(other);
+        Objects.requireNonNull(targetUnit);
+
+        // Normalize both to base unit using the enum's responsibility
+        double baseVal1 = this.unit.convertToBaseUnit(this.value);
+        double baseVal2 = other.unit.convertToBaseUnit(other.value);
+
+        // Perform arithmetic and convert back via targetUnit
+        double sumInBase = baseVal1 + baseVal2;
+        double finalValue = targetUnit.convertFromBaseUnit(sumInBase);
+
+        return new QuantityLength(finalValue, targetUnit);
+    }
+
+    /**
+     * UC6 Backward Compatibility: Default addition to first operand's unit.
      */
     public QuantityLength add(QuantityLength other) {
-        return performAddition(this, other, this.unit);
-    }
-
-    /**
-     * UC7: Overloaded Static Method for Explicit Target Unit Specification.
-     * Allows the caller to define the resulting unit.
-     */
-    public static QuantityLength add(QuantityLength l1, QuantityLength l2, LengthUnit targetUnit) {
-        return performAddition(l1, l2, targetUnit);
+        return this.add(other, this.unit);
     }
 
     @Override
@@ -83,15 +96,15 @@ class QuantityLength {
         if (o == null || getClass() != o.getClass()) return false;
         QuantityLength that = (QuantityLength) o;
 
-        // Epsilon-based equality comparison at the base unit level
-        double v1 = this.value * this.unit.getConversionFactor();
-        double v2 = that.value * that.unit.getConversionFactor();
+        // Use enum responsibility for normalization
+        double v1 = this.unit.convertToBaseUnit(this.value);
+        double v2 = that.unit.convertToBaseUnit(that.value);
         return Math.abs(v1 - v2) < 1e-6;
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(value * unit.getConversionFactor());
+        return Objects.hash(unit.convertToBaseUnit(value));
     }
 
     @Override
@@ -100,49 +113,25 @@ class QuantityLength {
     }
 }
 
-// 3. Application Class for UC7 Testing/Demo
+// --- 3. MAIN APP (Verification of UC8) ---
 public class QuantityMeasurementApp {
-
     public static void main(String[] args) {
-        System.out.println("=== UC7: Addition with Target Unit Specification ===\n");
+        System.out.println("=== UC8: Refactored Design Demo ===\n");
 
+        // Verification: Conversion delegation
         QuantityLength oneFoot = new QuantityLength(1.0, LengthUnit.FEET);
+        System.out.println("1ft to Inches: " + oneFoot.convertTo(LengthUnit.INCHES));
+
+        // Verification: Addition delegation
         QuantityLength twelveInches = new QuantityLength(12.0, LengthUnit.INCHES);
-        QuantityLength oneYard = new QuantityLength(1.0, LengthUnit.YARDS);
+        System.out.println("1ft + 12in (Target Yards): " + oneFoot.add(twelveInches, LengthUnit.YARDS));
 
-        // 1. Target: FEET (1ft + 12in = 2ft)
-        printResult(oneFoot, twelveInches, LengthUnit.FEET);
-
-        // 2. Target: INCHES (1ft + 12in = 24in)
-        printResult(oneFoot, twelveInches, LengthUnit.INCHES);
-
-        // 3. Target: YARDS (1ft + 12in = ~0.667 yards)
-        printResult(oneFoot, twelveInches, LengthUnit.YARDS);
-
-        // 4. Target: FEET (36in + 1yd = 6ft)
+        // Verification: Equality delegation
         QuantityLength thirtySixInches = new QuantityLength(36.0, LengthUnit.INCHES);
-        printResult(thirtySixInches, oneYard, LengthUnit.FEET);
+        QuantityLength oneYard = new QuantityLength(1.0, LengthUnit.YARDS);
+        System.out.println("36in == 1yd? " + thirtySixInches.equals(oneYard));
 
-        // 5. Target: CENTIMETERS (2.54cm + 1in = 5.08cm)
-        QuantityLength cmVal = new QuantityLength(2.54, LengthUnit.CENTIMETERS);
-        QuantityLength oneInch = new QuantityLength(1.0, LengthUnit.INCHES);
-        printResult(cmVal, oneInch, LengthUnit.CENTIMETERS);
-
-        // 6. Identity & Target Change (5ft + 0in = ~1.667 yards)
-        QuantityLength zeroInches = new QuantityLength(0.0, LengthUnit.INCHES);
-        printResult(new QuantityLength(5.0, LengthUnit.FEET), zeroInches, LengthUnit.YARDS);
-
-        // 7. Negative Values & Target: INCHES (5ft + -2ft = 36in)
-        QuantityLength negTwoFeet = new QuantityLength(-2.0, LengthUnit.FEET);
-        printResult(new QuantityLength(5.0, LengthUnit.FEET), negTwoFeet, LengthUnit.INCHES);
-    }
-
-    /**
-     * Helper method to format output for the console.
-     */
-    private static void printResult(QuantityLength l1, QuantityLength l2, LengthUnit target) {
-        QuantityLength result = QuantityLength.add(l1, l2, target);
-        System.out.printf("Add: [%s] + [%s] -> Target: %s%n", l1, l2, target);
-        System.out.printf("Result: %s%n%n", result);
+        // Verification: Direct Enum Responsibility (SRP Test)
+        System.out.println("Enum logic (12in to Feet): " + LengthUnit.INCHES.convertToBaseUnit(12.0));
     }
 }
