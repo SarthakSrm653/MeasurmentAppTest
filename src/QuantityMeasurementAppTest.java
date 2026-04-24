@@ -1,48 +1,37 @@
 import java.util.Objects;
 
 /**
- * 1. UNIT ENUMS (Responsibility: Conversion Logic)
- * Each category (Length, Weight) has its own standalone enum to prevent circular dependencies.
+ * UC4: Extended Unit Support
+ * This implementation adds YARDS and CENTIMETERS to the existing FEET and INCHES logic.
+ * All units are compared by converting to a common base (INCHES).
  */
 
+// 1. Enum with all length units and their factors relative to INCHES
 enum LengthUnit {
-    FEET(1.0), INCHES(1.0 / 12.0), YARDS(3.0), CENTIMETERS(1.0 / 30.48);
+    FEET(12.0),           // 1 foot = 12 inches
+    INCHES(1.0),          // Base unit
+    YARDS(36.0),          // 1 yard = 3 feet = 36 inches
+    CENTIMETERS(0.393701); // 1 cm = 0.393701 inches
 
-    private final double factor;
-    LengthUnit(double factor) { this.factor = factor; }
-    public double toBase(double val) { return val * this.factor; }
-    public double fromBase(double baseVal) { return baseVal / this.factor; }
+    private final double conversionFactor;
+
+    LengthUnit(double conversionFactor) {
+        this.conversionFactor = conversionFactor;
+    }
+
+    public double getConversionFactor() {
+        return conversionFactor;
+    }
 }
 
-enum WeightUnit {
-    KILOGRAM(1.0), GRAM(0.001), POUND(0.453592);
-
-    private final double factor;
-    WeightUnit(double factor) { this.factor = factor; }
-    public double toBase(double val) { return val * this.factor; }
-    public double fromBase(double baseVal) { return baseVal / this.factor; }
-}
-
-/**
- * 2. QUANTITY LENGTH (Category: Length)
- */
+// 2. QuantityLength Class
 class QuantityLength {
     private final double value;
     private final LengthUnit unit;
 
     public QuantityLength(double value, LengthUnit unit) {
-        if (!Double.isFinite(value)) throw new IllegalArgumentException("Invalid value");
         this.value = value;
-        this.unit = Objects.requireNonNull(unit);
-    }
-
-    public QuantityLength convertTo(LengthUnit target) {
-        return new QuantityLength(target.fromBase(this.unit.toBase(this.value)), target);
-    }
-
-    public QuantityLength add(QuantityLength other, LengthUnit target) {
-        double sumBase = this.unit.toBase(this.value) + other.unit.toBase(other.value);
-        return new QuantityLength(target.fromBase(sumBase), target);
+        this.unit = unit;
     }
 
     @Override
@@ -50,74 +39,49 @@ class QuantityLength {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
         QuantityLength that = (QuantityLength) o;
-        return Math.abs(this.unit.toBase(this.value) - that.unit.toBase(that.value)) < 1e-6;
+
+        // Convert both values to the base unit (INCHES) for comparison
+        double value1InInches = this.value * this.unit.getConversionFactor();
+        double value2InInches = that.value * that.unit.getConversionFactor();
+
+        // Use an epsilon (1e-6) to handle floating-point precision differences
+        return Math.abs(value1InInches - value2InInches) < 1e-6;
     }
 
     @Override
-    public String toString() { return String.format("%.3f %s", value, unit); }
+    public int hashCode() {
+        return Objects.hash(value * unit.getConversionFactor());
+    }
+
+    @Override
+    public String toString() {
+        return value + " " + unit;
+    }
 }
 
-/**
- * 3. QUANTITY WEIGHT (Category: Weight)
- */
-class QuantityWeight {
-    private final double value;
-    private final WeightUnit unit;
-
-    public QuantityWeight(double value, WeightUnit unit) {
-        if (!Double.isFinite(value)) throw new IllegalArgumentException("Invalid value");
-        this.value = value;
-        this.unit = Objects.requireNonNull(unit);
-    }
-
-    public QuantityWeight convertTo(WeightUnit target) {
-        return new QuantityWeight(target.fromBase(this.unit.toBase(this.value)), target);
-    }
-
-    public QuantityWeight add(QuantityWeight other, WeightUnit target) {
-        double sumBase = this.unit.toBase(this.value) + other.unit.toBase(other.value);
-        return new QuantityWeight(target.fromBase(sumBase), target);
-    }
-
-    @Override
-    public boolean equals(Object o) {
-        if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
-        QuantityWeight that = (QuantityWeight) o;
-        return Math.abs(this.unit.toBase(this.value) - that.unit.toBase(that.value)) < 1e-6;
-    }
-
-    @Override
-    public String toString() { return String.format("%.3f %s", value, unit); }
-}
-
-/**
- * 4. MAIN APPLICATION
- */
+// 3. Main App to demonstrate UC4 requirements
 public class QuantityMeasurementApp {
     public static void main(String[] args) {
-        System.out.println("=== UC9: Multi-Category Measurement System ===\n");
+        System.out.println("=== UC4: Extended Unit Support Demo ===\n");
 
-        // --- LENGTH DEMO ---
-        QuantityLength oneYard = new QuantityLength(1.0, LengthUnit.YARDS);
-        QuantityLength threeFeet = new QuantityLength(3.0, LengthUnit.FEET);
-        System.out.println("Length Equality (1yd == 3ft): " + oneYard.equals(threeFeet));
+        // Yard to Feet: 1 yd = 3 ft
+        compare(new QuantityLength(1.0, LengthUnit.YARDS), new QuantityLength(3.0, LengthUnit.FEET));
 
-        // --- WEIGHT DEMO ---
-        QuantityWeight oneKg = new QuantityWeight(1.0, WeightUnit.KILOGRAM);
-        QuantityWeight grams = new QuantityWeight(1000.0, WeightUnit.GRAM);
-        QuantityWeight pounds = new QuantityWeight(2.20462, WeightUnit.POUND);
+        // Yard to Inches: 1 yd = 36 in
+        compare(new QuantityLength(1.0, LengthUnit.YARDS), new QuantityLength(36.0, LengthUnit.INCHES));
 
-        System.out.println("Weight Equality (1kg == 1000g): " + oneKg.equals(grams));
-        System.out.println("Weight Equality (1kg == 2.20462lb): " + oneKg.equals(pounds));
+        // Centimeters to Inches: 1 cm = 0.393701 in
+        compare(new QuantityLength(1.0, LengthUnit.CENTIMETERS), new QuantityLength(0.393701, LengthUnit.INCHES));
 
-        // --- ADDITION DEMO ---
-        QuantityWeight sumWeight = oneKg.add(new QuantityWeight(1.0, WeightUnit.POUND), WeightUnit.GRAM);
-        System.out.println("Addition (1kg + 1lb) in Grams: " + sumWeight);
+        // Complex Multi-Unit: 2 yards = 72 inches
+        compare(new QuantityLength(2.0, LengthUnit.YARDS), new QuantityLength(72.0, LengthUnit.INCHES));
 
-        // --- CATEGORY TYPE SAFETY DEMO ---
-        System.out.println("\nCategory Incompatibility Check:");
-        // Comparing Weight to Length should return false, not true or an error
-        System.out.println("Does 1kg equal 1ft? " + oneKg.equals(threeFeet));
+        // Centimeters to Feet
+        compare(new QuantityLength(30.48, LengthUnit.CENTIMETERS), new QuantityLength(1.0, LengthUnit.FEET));
+    }
+
+    private static void compare(QuantityLength l1, QuantityLength l2) {
+        System.out.println("Comparing: " + l1 + " and " + l2);
+        System.out.println("Result: " + (l1.equals(l2) ? "Equal" : "Not Equal") + "\n");
     }
 }
